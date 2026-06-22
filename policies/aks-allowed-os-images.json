@@ -1,0 +1,65 @@
+{
+  "mode": "Indexed",
+  "policyRule": {
+    "if": {
+      "allOf": [
+        {
+          "field": "type",
+          "equals": "Microsoft.ContainerService/managedClusters/agentPools"
+        },
+        {
+          "not": {
+            "field": "Microsoft.ContainerService/managedClusters/agentPools/osSKU",
+            "in": "[parameters('allowedOsSKUs')]"
+          }
+        }
+      ]
+    },
+    "then": {
+      "effect": "[parameters('effect')]"
+    }
+  },
+  "parameters": {
+    "effect": {
+      "type": "String",
+      "metadata": {
+        "displayName": "Effect",
+        "description": "The effect to apply when the policy is violated."
+      },
+      "allowedValues": [
+        "Audit",
+        "Deny",
+        "Disabled"
+      ],
+      "defaultValue": "Deny"
+    },
+    "allowedOsSKUs": {
+      "type": "Array",
+      "metadata": {
+        "displayName": "Allowed OS SKUs",
+        "description": "The list of allowed OS image SKUs for AKS node pools."
+      },
+      "defaultValue": [
+        "AzureLinux",
+        "Mariner",
+        "CBLMariner",
+        "Ubuntu"
+      ],
+      "allowedValues": [
+        "AzureLinux",
+        "Mariner",
+        "CBLMariner",
+        "Ubuntu",
+        "Windows2019",
+        "Windows2022",
+        "WindowsAnnual"
+      ]
+    }
+  },
+  "metadata": {
+    "displayName": "AKS clusters should only use allowed OS image SKUs",
+    "description": "Restricts AKS node pools to whitelisted OS images: Azure Linux (v3/v4), Azure Container Linux (Mariner/CBLMariner), and RHEL-based images. Denies creation of node pools using non-approved OS SKUs.",
+    "category": "Kubernetes",
+    "version": "1.0.0"
+  }
+}
