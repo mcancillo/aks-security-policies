@@ -9,8 +9,20 @@
         },
         {
           "not": {
-            "field": "Microsoft.ContainerService/managedClusters/agentPools/osSKU",
-            "in": "[parameters('allowedOsSKUs')]"
+            "anyOf": [
+              {
+                "allOf": [
+                  {
+                    "field": "Microsoft.ContainerService/managedClusters/agentPools/osSKU",
+                    "in": "[parameters('allowedOsSKUs')]"
+                  },
+                  {
+                    "field": "Microsoft.ContainerService/managedClusters/agentPools/osType",
+                    "equals": "Linux"
+                  }
+                ]
+              }
+            ]
           }
         }
       ]
@@ -37,29 +49,25 @@
       "type": "Array",
       "metadata": {
         "displayName": "Allowed OS SKUs",
-        "description": "The list of allowed OS image SKUs for AKS node pools."
+        "description": "The list of allowed Linux OS image SKUs for AKS node pools. Windows SKUs are explicitly blocked."
       },
       "defaultValue": [
         "AzureLinux",
         "Mariner",
-        "CBLMariner",
-        "Ubuntu"
+        "CBLMariner"
       ],
       "allowedValues": [
         "AzureLinux",
         "Mariner",
-        "CBLMariner",
-        "Ubuntu",
-        "Windows2019",
-        "Windows2022",
-        "WindowsAnnual"
+        "CBLMariner"
       ]
     }
   },
   "metadata": {
-    "displayName": "AKS clusters should only use allowed OS image SKUs",
-    "description": "Restricts AKS node pools to whitelisted OS images: Azure Linux (v3/v4), Azure Container Linux (Mariner/CBLMariner), and RHEL-based images. Denies creation of node pools using non-approved OS SKUs.",
+    "displayName": "AKS clusters should only use approved Linux OS image SKUs",
+    "description": "Restricts AKS node pools to approved Linux-only OS images: AzureLinux (v3/v4) and CBL-Mariner. Explicitly denies Windows node pools and Ubuntu. Only hardened, Microsoft-maintained Linux distributions are permitted.",
     "category": "Kubernetes",
-    "version": "1.0.0"
+    "version": "2.0.0"
   }
 }
+
