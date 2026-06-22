@@ -55,13 +55,15 @@
         "AzureLinux",
         "AzureContainerLinux",
         "Mariner",
-        "CBLMariner"
+        "CBLMariner",
+        "Ubuntu"
       ],
       "allowedValues": [
         "AzureLinux",
         "AzureContainerLinux",
         "Mariner",
-        "CBLMariner"
+        "CBLMariner",
+        "Ubuntu"
       ]
     }
   },
