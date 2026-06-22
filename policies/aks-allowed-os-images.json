@@ -53,11 +53,13 @@
       },
       "defaultValue": [
         "AzureLinux",
+        "AzureContainerLinux",
         "Mariner",
         "CBLMariner"
       ],
       "allowedValues": [
         "AzureLinux",
+        "AzureContainerLinux",
         "Mariner",
         "CBLMariner"
       ]
