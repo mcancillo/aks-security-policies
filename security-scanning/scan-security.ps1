@@ -100,15 +100,37 @@ foreach ($subId in $SubscriptionIds) {
     }
 
     $subName = $subDetail.name
-    $environment = if ($EnvironmentMap.ContainsKey($subId)) {
-        $EnvironmentMap[$subId]
-    } elseif ($subName -match 'prod|prd') {
-        'PRD'
-    } elseif ($subName -match 'dev|dta|test|accept|sandbox|nonprod|non-prod') {
-        'DTA'
+
+    # Resolve environment: explicit map > subscription tags > friendly name pattern
+    $environment = 'Unknown'
+    if ($EnvironmentMap.ContainsKey($subId)) {
+        $environment = $EnvironmentMap[$subId]
     } else {
-        'Unknown'
+        # Check subscription-level 'environment' tag
+        $subTags = az tag list --resource-id "/subscriptions/$subId" --output json 2>$null | ConvertFrom-Json
+        $envTag = $null
+        if ($subTags -and $subTags.properties -and $subTags.properties.tags) {
+            $tags = $subTags.properties.tags
+            # Look for common environment tag names (case-insensitive)
+            foreach ($key in $tags.PSObject.Properties.Name) {
+                if ($key -match '^(environment|env|stage|tier)$') {
+                    $envTag = $tags.$key
+                    break
+                }
+            }
+        }
+
+        if ($envTag -match 'prod|prd|production') {
+            $environment = 'PRD'
+        } elseif ($envTag -match 'dev|dta|test|accept|sandbox|nonprod|non-prod|staging|uat|qa') {
+            $environment = 'DTA'
+        } elseif ($subName -match 'prod|prd|production') {
+            $environment = 'PRD'
+        } elseif ($subName -match 'dev|dta|test|accept|sandbox|nonprod|non-prod|staging|uat|qa') {
+            $environment = 'DTA'
+        }
     }
+    Write-Host "  [Env] Detected environment: $environment (source: $(if ($EnvironmentMap.ContainsKey($subId)) {'explicit map'} elseif ($envTag) {'tag'} else {'subscription name'}))" -ForegroundColor Gray
 
     Write-Host ""
     Write-Host "  ════════════════════════════════════════════" -ForegroundColor DarkGray

@@ -40,6 +40,7 @@ function Test-NetworkSecurity {
                     Detail      = "$($dangerousRules.Count) rule(s) allow inbound from Internet/Any to sensitive ports (22/3389/80/443/*) in RG '$($nsg.resourceGroup)'"
                     Remediation = "Restrict source addresses to known CIDRs. Use Azure Bastion for management access. Remove wildcard inbound rules."
                     Perspective = "Hacker"
+                    Artifacts   = @($dangerousRules | ForEach-Object { @{ Rule = $_.name; Port = $_.destinationPortRange; Source = $_.sourceAddressPrefix; Priority = $_.priority } })
                 }
             }
         }
@@ -61,6 +62,7 @@ function Test-NetworkSecurity {
                         Detail      = "$($subnets.Count) subnet(s) have no NSG attached: $($subnets.name -join ', ')"
                         Remediation = "Attach NSGs to all non-gateway subnets. This is a CLZ v2 baseline requirement."
                         Perspective = "CISO"
+                        Artifacts   = @($subnets | ForEach-Object { @{ Subnet = $_.name; AddressPrefix = $_.addressPrefix; VNet = $vnet.name } })
                     }
                 }
             }
@@ -82,6 +84,7 @@ function Test-NetworkSecurity {
                 Detail      = "$($unattached.Count) public IP(s) are not attached to any resource — potential cost waste and attack surface"
                 Remediation = "Delete unused public IPs. Each public IP is a potential entry point."
                 Perspective = "Hacker"
+                Artifacts   = @($unattached | ForEach-Object { @{ Name = $_.name; IP = $_.ipAddress; ResourceGroup = $_.resourceGroup; SKU = $_.sku.name } })
             }
         }
 
@@ -94,6 +97,7 @@ function Test-NetworkSecurity {
                 Detail      = "Large external attack surface. CLZ v2 recommends minimizing public endpoints."
                 Remediation = "Consolidate behind Azure Firewall, Application Gateway, or Front Door. Use Private Link where possible."
                 Perspective = "CISO"
+                Artifacts   = @($publicIps | ForEach-Object { @{ Name = $_.name; IP = $_.ipAddress; ResourceGroup = $_.resourceGroup; Attached = if ($_.ipConfiguration) { 'Yes' } else { 'No' } } })
             }
         }
     }
@@ -129,6 +133,11 @@ function Test-NetworkSecurity {
             Detail      = "$peCount Private Endpoint(s) for $plEligibleCount Private-Link-eligible resources (Storage, Key Vault, SQL)"
             Remediation = "Enable Private Endpoints for all PaaS services. Disable public network access on storage accounts, Key Vaults, and SQL servers."
             Perspective = "Hacker"
+            Artifacts   = @(
+                @($storageAccounts | ForEach-Object { @{ Type = "Storage"; Name = $_.name; ResourceGroup = $_.resourceGroup } }) +
+                @($keyVaults | ForEach-Object { @{ Type = "KeyVault"; Name = $_.name; ResourceGroup = $_.resourceGroup } }) +
+                @($sqlServers | ForEach-Object { @{ Type = "SQL"; Name = $_.name; ResourceGroup = $_.resourceGroup } })
+            )
         }
     }
 

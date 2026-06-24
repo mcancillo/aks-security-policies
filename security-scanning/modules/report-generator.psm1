@@ -27,20 +27,55 @@ function New-SecurityReport {
 
     # Build findings rows
     $findingsHtml = ""
+    $rowIndex = 0
     $groupedByCategory = $allFindings | Group-Object -Property Category
     foreach ($group in ($groupedByCategory | Sort-Object Name)) {
         foreach ($f in ($group.Group | Sort-Object { switch ($_.Severity) { 'Critical' { 0 } 'High' { 1 } 'Medium' { 2 } 'Info' { 3 } default { 4 } } })) {
             $sevClass = switch ($f.Severity) { 'Critical' { 'sev-critical' } 'High' { 'sev-high' } 'Medium' { 'sev-medium' } default { 'sev-info' } }
             $perspIcon = if ($f.Perspective -eq 'Hacker') { '&#x1F3AD;' } else { '&#x1F3E2;' }
+            $hasArtifacts = ($f.Artifacts -and $f.Artifacts.Count -gt 0)
+            $cursorStyle = if ($hasArtifacts) { 'cursor: pointer;' } else { '' }
+            $expandHint = if ($hasArtifacts) { '<span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span>' } else { '' }
+
             $findingsHtml += @"
-            <tr>
+            <tr class="finding-row" data-row="$rowIndex" style="$cursorStyle">
                 <td><span class="badge $sevClass">$($f.Severity)</span></td>
                 <td>$($f.Category)</td>
-                <td><strong>$($f.Check)</strong><br><span class="detail">$($f.Detail)</span></td>
+                <td><strong>$($f.Check)</strong><br><span class="detail">$($f.Detail)</span>$expandHint</td>
                 <td class="remediation">$($f.Remediation)</td>
                 <td class="perspective">$perspIcon $($f.Perspective)</td>
             </tr>
 "@
+            # Build artifact detail row (hidden by default)
+            if ($hasArtifacts) {
+                $artifactTableHtml = "<table class='artifact-table'><thead><tr>"
+                $headers = $f.Artifacts[0].Keys | Sort-Object
+                foreach ($h in $headers) {
+                    $artifactTableHtml += "<th>$h</th>"
+                }
+                $artifactTableHtml += "</tr></thead><tbody>"
+                foreach ($artifact in $f.Artifacts) {
+                    $artifactTableHtml += "<tr>"
+                    foreach ($h in $headers) {
+                        $val = if ($artifact[$h]) { $artifact[$h] } else { '-' }
+                        $artifactTableHtml += "<td>$val</td>"
+                    }
+                    $artifactTableHtml += "</tr>"
+                }
+                $artifactTableHtml += "</tbody></table>"
+
+                $findingsHtml += @"
+            <tr class="artifact-row" data-row="$rowIndex" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items ($($f.Artifacts.Count))</div>
+                        $artifactTableHtml
+                    </div>
+                </td>
+            </tr>
+"@
+            }
+            $rowIndex++
         }
     }
 
@@ -109,6 +144,19 @@ function New-SecurityReport {
         .footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); }
         .legend { display: flex; gap: 2rem; margin-bottom: 1rem; flex-wrap: wrap; }
         .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--muted); }
+        .expand-hint { display: block; margin-top: 4px; font-size: 0.75rem; color: #818cf8; opacity: 0.8; }
+        .finding-row[style*="cursor"] .expand-hint { display: block; }
+        .artifact-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
+        .artifact-container { background: #0f172a; padding: 16px 20px; border-left: 3px solid #818cf8; margin: 0; }
+        .artifact-header { font-size: 0.85rem; font-weight: 700; color: #818cf8; margin-bottom: 10px; }
+        .artifact-table { width: 100%; background: #1e293b; border-radius: 6px; border: 1px solid var(--border); margin: 0; }
+        .artifact-table th { background: #334155; font-size: 0.7rem; padding: 8px 12px; color: #e2e8f0; }
+        .artifact-table td { font-size: 0.8rem; padding: 6px 12px; color: var(--muted); font-family: 'Cascadia Code', 'Fira Code', monospace; word-break: break-all; }
+        .artifact-table tr:hover { background: #ffffff0a; }
+        .finding-row[style*="cursor"]:hover { background: #818cf810 !important; }
+        .finding-row.expanded { background: #818cf80a; }
+        .finding-row.expanded .expand-hint { color: #a5b4fc; }
+        .finding-row.expanded .expand-hint::before { content: ''; }
 
         @media print {
             body { background: #fff; color: #111; }
@@ -173,6 +221,27 @@ function New-SecurityReport {
             CLZ v2 Security Maturity Scanner &nbsp;|&nbsp; github.com/mcancillo/aks-security-policies &nbsp;|&nbsp; $ScanTimestamp
         </div>
     </div>
+    <script>
+        document.querySelectorAll('.finding-row').forEach(row => {
+            row.addEventListener('dblclick', () => {
+                const rowId = row.dataset.row;
+                const artifactRow = document.querySelector('.artifact-row[data-row="' + rowId + '"]');
+                if (!artifactRow) return;
+
+                const isVisible = artifactRow.style.display !== 'none';
+                artifactRow.style.display = isVisible ? 'none' : 'table-row';
+                row.classList.toggle('expanded', !isVisible);
+
+                // Update hint text
+                const hint = row.querySelector('.expand-hint');
+                if (hint) {
+                    hint.innerHTML = isVisible
+                        ? hint.innerHTML.replace('&#x25BC;', '&#x25B6;').replace('▼', '▶')
+                        : hint.innerHTML.replace('&#x25B6;', '&#x25BC;').replace('▶', '▼');
+                }
+            });
+        });
+    </script>
 </body>
 </html>
 "@

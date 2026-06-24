@@ -37,6 +37,7 @@ function Test-RbacSecurity {
             Detail      = "$($subScopePrivileged.Count) principals have Owner/Contributor/UAA at subscription level (threshold: 3)"
             Remediation = "Reduce subscription-scoped privileged assignments. Use resource-group scoped roles and PIM for JIT access."
             Perspective = "Hacker"
+            Artifacts   = @($subScopePrivileged | ForEach-Object { @{ Principal = $_.principalName; Role = $_.roleDefinitionName; Type = $_.principalType } })
         }
     }
 
@@ -51,6 +52,7 @@ function Test-RbacSecurity {
             Detail      = "$($directUserAssignments.Count) role assignments are directly to users instead of Entra ID groups"
             Remediation = "Assign roles to Entra ID groups, not individual users. This ensures consistent access management and easier auditing."
             Perspective = "CISO"
+            Artifacts   = @($directUserAssignments | ForEach-Object { @{ Principal = $_.principalName; Role = $_.roleDefinitionName; Scope = $_.scope } })
         }
     }
 
@@ -66,6 +68,7 @@ function Test-RbacSecurity {
             Detail      = "$($classicOnly.Count) classic admin role(s) found (CoAdministrator/ServiceAdministrator)"
             Remediation = "Remove all classic administrator roles. Migrate to Azure RBAC roles with least-privilege."
             Perspective = "Hacker"
+            Artifacts   = @($classicOnly | ForEach-Object { @{ Principal = $_.principalName; Role = $_.roleDefinitionName } })
         }
     }
 
@@ -84,6 +87,7 @@ function Test-RbacSecurity {
                 Detail      = "$($wildcardRoles.Count) custom role(s) grant full wildcard actions — equivalent to Owner"
                 Remediation = "Remove wildcard permissions from custom roles. Define explicit action lists following least-privilege."
                 Perspective = "Hacker"
+                Artifacts   = @($wildcardRoles | ForEach-Object { @{ RoleName = $_.roleName; Id = $_.id } })
             }
         }
     }
@@ -101,6 +105,7 @@ function Test-RbacSecurity {
             Detail      = "$($spOwners.Count) service principal(s) have Owner role — potential lateral movement vector"
             Remediation = "Replace Owner with scoped Contributor or custom roles. Service principals should never hold Owner."
             Perspective = "Hacker"
+            Artifacts   = @($spOwners | ForEach-Object { @{ Principal = $_.principalName; PrincipalId = $_.principalId; Scope = $_.scope } })
         }
     }
 
@@ -115,6 +120,7 @@ function Test-RbacSecurity {
             Detail      = "$($guestAssignments.Count) guest (B2B) user(s) have direct Azure role assignments"
             Remediation = "Review guest access. Ensure external identities are governed via access reviews and conditional access."
             Perspective = "CISO"
+            Artifacts   = @($guestAssignments | ForEach-Object { @{ Guest = $_.principalName; Role = $_.roleDefinitionName; Scope = $_.scope } })
         }
     }
 
