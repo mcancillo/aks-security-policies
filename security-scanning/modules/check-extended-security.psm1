@@ -144,6 +144,134 @@ function Test-ExtendedSecurity {
                     Perspective = "CISO"
                 }
             }
+
+            # --- CMK/mHSM Encryption checks ---
+            $keySource = $sa.encryption.keySource
+            if ($keySource -ne 'Microsoft.Keyvault') {
+                $score -= 10
+                $findings += @{
+                    Category    = "CMK/Encryption"
+                    Severity    = "High"
+                    Check       = "Storage '$($sa.name)' uses Microsoft-managed keys (MMK)"
+                    Detail      = "Encryption key source is '$keySource'. Customer does not control key lifecycle, rotation, or revocation."
+                    Remediation = "Configure Customer-Managed Keys (CMK) with Managed HSM or Key Vault. CLZ v2 requires CMK for PRD workloads."
+                    Perspective = "CISO"
+                    Artifacts   = @(@{ StorageAccount = $sa.name; ResourceGroup = $sa.resourceGroup; KeySource = $keySource; Location = $sa.location })
+                }
+            } else {
+                # Has CMK — validate mHSM configuration
+                $kvUri = $sa.encryption.keyVaultProperties.keyVaultUri
+                $keyName = $sa.encryption.keyVaultProperties.keyName
+                $keyVersion = $sa.encryption.keyVaultProperties.keyVersion
+                $isMhsm = $kvUri -match 'managedhsm\.azure\.net'
+
+                if (-not $isMhsm) {
+                    $findings += @{
+                        Category    = "CMK/Encryption"
+                        Severity    = "Medium"
+                        Check       = "Storage '$($sa.name)' uses CMK with Key Vault (not Managed HSM)"
+                        Detail      = "Key Vault is software-protected (FIPS 140-2 L1). Managed HSM provides hardware isolation (FIPS 140-3 L3)."
+                        Remediation = "Migrate CMK to Managed HSM for hardware-level key isolation. Required for CLZ v2 Run phase and sovereign workloads."
+                        Perspective = "CISO"
+                        Artifacts   = @(@{ StorageAccount = $sa.name; KeyVaultUri = $kvUri; KeyName = $keyName; HSMBacked = 'No' })
+                    }
+                }
+
+                # Check if key version is pinned (prevents auto-rotation)
+                if ($keyVersion -and $keyVersion -ne '') {
+                    $score -= 5
+                    $findings += @{
+                        Category    = "CMK/Encryption"
+                        Severity    = "High"
+                        Check       = "Storage '$($sa.name)' has pinned key version (no auto-rotation)"
+                        Detail      = "Key version '$keyVersion' is explicitly set. Auto-rotation is disabled — stale keys increase blast radius."
+                        Remediation = "Remove the key version from the CMK configuration to enable automatic key rotation when the key is rotated in the HSM/vault."
+                        Perspective = "Hacker"
+                        Artifacts   = @(@{ StorageAccount = $sa.name; KeyName = $keyName; PinnedVersion = $keyVersion; VaultUri = $kvUri })
+                    }
+                }
+
+                # Check identity type for CMK access
+                $identityType = $sa.identity.type
+                if ($identityType -match 'SystemAssigned' -and $identityType -notmatch 'UserAssigned') {
+                    $findings += @{
+                        Category    = "CMK/Encryption"
+                        Severity    = "Medium"
+                        Check       = "Storage '$($sa.name)' uses system-assigned identity for CMK"
+                        Detail      = "System-assigned identity is tied to the resource lifecycle. If the storage account is deleted, key access is immediately lost."
+                        Remediation = "Use a User-Assigned Managed Identity for CMK access. This decouples identity from resource lifecycle and enables pre-authorization."
+                        Perspective = "CISO"
+                        Artifacts   = @(@{ StorageAccount = $sa.name; IdentityType = $identityType; KeyVaultUri = $kvUri })
+                    }
+                }
+            }
+        }
+    }
+
+    # --- 3b. Managed HSM security posture ---
+    $managedHsms = az keyvault list --resource-type hsm --output json 2>$null | ConvertFrom-Json
+    if ($managedHsms -and $managedHsms.Count -gt 0) {
+        foreach ($hsm in $managedHsms) {
+            $hsmDetail = az rest --method get --uri "https://management.azure.com$($hsm.id)?api-version=2023-07-01" --output json 2>$null | ConvertFrom-Json
+
+            if ($hsmDetail) {
+                # Purge protection
+                if (-not $hsmDetail.properties.enablePurgeProtection) {
+                    $score -= 15
+                    $findings += @{
+                        Category    = "CMK/Encryption"
+                        Severity    = "Critical"
+                        Check       = "Managed HSM '$($hsm.name)' lacks purge protection"
+                        Detail      = "Keys can be permanently destroyed during soft-delete period. A malicious admin could crypto-shred all encrypted data."
+                        Remediation = "Enable purge protection immediately. This is non-reversible and required for CLZ v2."
+                        Perspective = "Hacker"
+                        Artifacts   = @(@{ HSM = $hsm.name; ResourceGroup = $hsm.resourceGroup; PurgeProtection = 'Disabled' })
+                    }
+                }
+
+                # Public network access
+                $publicAccess = $hsmDetail.properties.publicNetworkAccess
+                if ($publicAccess -ne 'Disabled') {
+                    $score -= 10
+                    $findings += @{
+                        Category    = "CMK/Encryption"
+                        Severity    = "Critical"
+                        Check       = "Managed HSM '$($hsm.name)' allows public network access"
+                        Detail      = "HSM key operations (wrap/unwrap) accessible from the internet. An attacker with stolen credentials can decrypt data remotely."
+                        Remediation = "Disable public network access. Use Private Endpoints exclusively for HSM connectivity."
+                        Perspective = "Hacker"
+                        Artifacts   = @(@{ HSM = $hsm.name; PublicAccess = $publicAccess; Location = $hsmDetail.location })
+                    }
+                }
+
+                # Soft-delete retention period
+                $retention = $hsmDetail.properties.softDeleteRetentionInDays
+                if ($retention -and $retention -lt 90) {
+                    $findings += @{
+                        Category    = "CMK/Encryption"
+                        Severity    = "Medium"
+                        Check       = "Managed HSM '$($hsm.name)' has short soft-delete retention ($retention days)"
+                        Detail      = "Short retention reduces recovery window for accidentally deleted keys. Recommended: 90 days."
+                        Remediation = "Set soft-delete retention to 90 days for adequate recovery window."
+                        Perspective = "CISO"
+                        Artifacts   = @(@{ HSM = $hsm.name; RetentionDays = $retention; Recommended = 90 })
+                    }
+                }
+            }
+        }
+    } elseif ($storageAccounts) {
+        # No mHSM found but storage accounts exist
+        $cmkAccounts = $storageAccounts | Where-Object { $_.encryption.keySource -eq 'Microsoft.Keyvault' }
+        if ($cmkAccounts.Count -eq 0 -and $storageAccounts.Count -gt 0) {
+            $findings += @{
+                Category    = "CMK/Encryption"
+                Severity    = "High"
+                Check       = "No Managed HSM deployed and no CMK in use"
+                Detail      = "$($storageAccounts.Count) storage account(s) rely entirely on Microsoft-managed keys. No customer key sovereignty."
+                Remediation = "Deploy Managed HSM and configure CMK for all storage accounts containing sensitive/regulated data."
+                Perspective = "CISO"
+                Artifacts   = @($storageAccounts | ForEach-Object { @{ StorageAccount = $_.name; ResourceGroup = $_.resourceGroup; KeySource = $_.encryption.keySource } })
+            }
         }
     }
 

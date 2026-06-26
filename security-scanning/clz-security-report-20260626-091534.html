@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLZ v2 Security Maturity Report</title>
+    <style>
+        :root { --bg: #0f172a; --surface: #1e293b; --border: #334155; --text: #e2e8f0; --muted: #94a3b8; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
+        .subtitle { color: var(--muted); margin-bottom: 2rem; }
+        .score-hero { display: flex; align-items: center; gap: 2rem; background: var(--surface); border-radius: 12px; padding: 2rem; margin-bottom: 2rem; border: 1px solid var(--border); }
+        .score-ring { position: relative; width: 140px; height: 140px; }
+        .score-ring svg { transform: rotate(-90deg); }
+        .score-ring .bg { stroke: var(--border); }
+        .score-ring .fg { stroke: #f59e0b; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+        .score-value { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 2.5rem; font-weight: 800; color: #f59e0b; }
+        .score-meta h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+        .maturity-badge { display: inline-block; padding: 4px 14px; border-radius: 6px; font-weight: 700; font-size: 0.9rem; background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .kpi { background: var(--surface); border-radius: 10px; padding: 1.25rem; text-align: center; border: 1px solid var(--border); }
+        .kpi .num { font-size: 2rem; font-weight: 800; }
+        .kpi .label { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .kpi.critical .num { color: #ef4444; }
+        .kpi.high .num { color: #f97316; }
+        .kpi.medium .num { color: #f59e0b; }
+        .kpi.info .num { color: #3b82f6; }
+        table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; margin-bottom: 2rem; border: 1px solid var(--border); }
+        th { background: #0f172a; text-align: left; padding: 12px 16px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); border-bottom: 1px solid var(--border); }
+        td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 0.9rem; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background: #ffffff08; }
+        .badge { padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+        .sev-critical { background: #ef444422; color: #ef4444; border: 1px solid #ef4444; }
+        .sev-high { background: #f9731622; color: #f97316; border: 1px solid #f97316; }
+        .sev-medium { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b; }
+        .sev-info { background: #3b82f622; color: #3b82f6; border: 1px solid #3b82f6; }
+        .detail { color: var(--muted); font-size: 0.85rem; }
+        .remediation { color: #67e8f9; font-size: 0.85rem; }
+        .perspective { font-size: 0.85rem; white-space: nowrap; }
+        code { background: #0f172a; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; }
+        .section-title { font-size: 1.2rem; margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+        .footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+        .legend { display: flex; gap: 2rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--muted); }
+        .expand-hint { display: block; margin-top: 4px; font-size: 0.75rem; color: #818cf8; opacity: 0.8; }
+        .finding-row[style*="cursor"] .expand-hint { display: block; }
+        .artifact-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
+        .artifact-container { background: #0f172a; padding: 16px 20px; border-left: 3px solid #818cf8; margin: 0; }
+        .artifact-header { font-size: 0.85rem; font-weight: 700; color: #818cf8; margin-bottom: 10px; }
+        .artifact-table { width: 100%; background: #1e293b; border-radius: 6px; border: 1px solid var(--border); margin: 0; }
+        .artifact-table th { background: #334155; font-size: 0.7rem; padding: 8px 12px; color: #e2e8f0; }
+        .artifact-table td { font-size: 0.8rem; padding: 6px 12px; color: var(--muted); font-family: 'Cascadia Code', 'Fira Code', monospace; word-break: break-all; }
+        .artifact-table tr:hover { background: #ffffff0a; }
+        .finding-row[style*="cursor"]:hover { background: #818cf810 !important; }
+        .finding-row.expanded { background: #818cf80a; }
+        .finding-row.expanded .expand-hint { color: #a5b4fc; }
+        .finding-row.expanded .expand-hint::before { content: ''; }
+
+        @media print {
+            body { background: #fff; color: #111; }
+            .kpi, table, .score-hero { border-color: #ddd; background: #fff; }
+            .score-value, .kpi .num { color: inherit !important; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>&#x1F6E1; CLZ v2 Security Maturity Report</h1>
+        <p class="subtitle">Generated: 2026-06-26 07:15:34 UTC &nbsp;|&nbsp; Subscriptions scanned: 2</p>
+
+        <div class="score-hero">
+            <div class="score-ring">
+                <svg width="140" height="140" viewBox="0 0 140 140">
+                    <circle class="bg" cx="70" cy="70" r="60" fill="none" stroke-width="12"/>
+                    <circle class="fg" cx="70" cy="70" r="60" fill="none" stroke-width="12"
+                        stroke-dasharray="377"
+                        stroke-dashoffset="150.8"/>
+                </svg>
+                <div class="score-value">60</div>
+            </div>
+            <div class="score-meta">
+                <h2>Overall Security Maturity</h2>
+                <p>CLZ Phase: <span class="maturity-badge">Walk</span></p>
+                <p style="color: var(--muted); margin-top: 0.5rem; font-size: 0.9rem;">
+                    Based on 109 findings across RBAC, Network, Defender, Key Vault, Storage, Policy, and Identity checks.
+                </p>
+            </div>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi critical"><div class="num">5</div><div class="label">Critical</div></div>
+            <div class="kpi high"><div class="num">18</div><div class="label">High</div></div>
+            <div class="kpi medium"><div class="num">86</div><div class="label">Medium</div></div>
+            <div class="kpi info"><div class="num">0</div><div class="label">Informational</div></div>
+        </div>
+
+        <h3 class="section-title">&#x1F4CA; Subscription Breakdown</h3>
+        <table>
+            <thead><tr>
+                <th>Subscription</th><th>ID</th><th>Environment</th>
+                <th>Overall</th><th>RBAC</th><th>Network</th><th>Extended</th>
+            </tr></thead>
+            <tbody>        <tr>
+            <td>MCAPS-Hybrid-REQ-134282-2025-macancil</td>
+            <td><code>da18cc37-a8d6-4643-8f64-01162010e3b6</code></td>
+            <td>PRD</td>
+            <td style="color: #f59e0b; font-weight: 700;">61%</td>
+            <td>75%</td>
+            <td>0%</td>
+            <td>50%</td>
+        </tr>        <tr>
+            <td>MCAPS-Hybrid-REQ-105009-2024-macancil</td>
+            <td><code>6cbb5372-2516-4048-b672-a3e0a36fac8b</code></td>
+            <td>DTA</td>
+            <td style="color: #ef4444; font-weight: 700;">58%</td>
+            <td>60%</td>
+            <td>0%</td>
+            <td>50%</td>
+        </tr></tbody>
+        </table>
+
+        <h3 class="section-title">&#x1F50D; Detailed Findings</h3>
+        <div class="legend">
+            <div class="legend-item">&#x1F3AD; Hacker Perspective — exploitability &amp; attack surface</div>
+            <div class="legend-item">&#x1F3E2; CISO Perspective — governance, compliance &amp; risk management</div>
+        </div>
+        <table>
+            <thead><tr>
+                <th>Severity</th><th>Category</th><th>Finding</th><th>Remediation</th><th>Perspective</th>
+            </tr></thead>
+            <tbody>            <tr class="finding-row" data-row="0" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>CMK/Encryption</td>
+                <td><strong>Storage 'alab17083' uses Microsoft-managed keys (MMK)</strong><br><span class="detail">Encryption key source is 'Microsoft.Storage'. Customer does not control key lifecycle, rotation, or revocation.</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Configure Customer-Managed Keys (CMK) with Managed HSM or Key Vault. CLZ v2 requires CMK for PRD workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="0" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>KeySource</th><th>Location</th><th>ResourceGroup</th><th>StorageAccount</th></tr></thead><tbody><tr><td>Microsoft.Storage</td><td>eastus2</td><td>testlabrg</td><td>alab17083</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="1" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>CMK/Encryption</td>
+                <td><strong>Storage 'testsa123321' uses Microsoft-managed keys (MMK)</strong><br><span class="detail">Encryption key source is 'Microsoft.Storage'. Customer does not control key lifecycle, rotation, or revocation.</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Configure Customer-Managed Keys (CMK) with Managed HSM or Key Vault. CLZ v2 requires CMK for PRD workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="1" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>KeySource</th><th>Location</th><th>ResourceGroup</th><th>StorageAccount</th></tr></thead><tbody><tr><td>Microsoft.Storage</td><td>eastus2</td><td>akstestapp1rg1</td><td>testsa123321</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="2" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>CMK/Encryption</td>
+                <td><strong>Storage 'mcaps8f6401162010e3b6' uses Microsoft-managed keys (MMK)</strong><br><span class="detail">Encryption key source is 'Microsoft.Storage'. Customer does not control key lifecycle, rotation, or revocation.</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Configure Customer-Managed Keys (CMK) with Managed HSM or Key Vault. CLZ v2 requires CMK for PRD workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="2" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>KeySource</th><th>Location</th><th>ResourceGroup</th><th>StorageAccount</th></tr></thead><tbody><tr><td>Microsoft.Storage</td><td>westus2</td><td>McapsGovernance</td><td>mcaps8f6401162010e3b6</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="3" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>CMK/Encryption</td>
+                <td><strong>No Managed HSM deployed and no CMK in use</strong><br><span class="detail">3 storage account(s) rely entirely on Microsoft-managed keys. No customer key sovereignty.</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Deploy Managed HSM and configure CMK for all storage accounts containing sensitive/regulated data.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="3" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (3)</div>
+                        <table class='artifact-table'><thead><tr><th>KeySource</th><th>ResourceGroup</th><th>StorageAccount</th></tr></thead><tbody><tr><td>Microsoft.Storage</td><td>testlabrg</td><td>alab17083</td></tr><tr><td>Microsoft.Storage</td><td>akstestapp1rg1</td><td>testsa123321</td></tr><tr><td>Microsoft.Storage</td><td>McapsGovernance</td><td>mcaps8f6401162010e3b6</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="4" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>CMK/Encryption</td>
+                <td><strong>Storage 'o2fqo9gwcarcvaulasrcache' uses Microsoft-managed keys (MMK)</strong><br><span class="detail">Encryption key source is 'Microsoft.Storage'. Customer does not control key lifecycle, rotation, or revocation.</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Configure Customer-Managed Keys (CMK) with Managed HSM or Key Vault. CLZ v2 requires CMK for PRD workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="4" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>KeySource</th><th>Location</th><th>ResourceGroup</th><th>StorageAccount</th></tr></thead><tbody><tr><td>Microsoft.Storage</td><td>westeurope</td><td>GWCARC-recoveryvault</td><td>o2fqo9gwcarcvaulasrcache</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="5" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>CMK/Encryption</td>
+                <td><strong>Storage 'r7geaxasrgwcvaasrcache' uses Microsoft-managed keys (MMK)</strong><br><span class="detail">Encryption key source is 'Microsoft.Storage'. Customer does not control key lifecycle, rotation, or revocation.</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Configure Customer-Managed Keys (CMK) with Managed HSM or Key Vault. CLZ v2 requires CMK for PRD workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="5" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>KeySource</th><th>Location</th><th>ResourceGroup</th><th>StorageAccount</th></tr></thead><tbody><tr><td>Microsoft.Storage</td><td>westeurope</td><td>rg-asrvault-gwc</td><td>r7geaxasrgwcvaasrcache</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="6" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>CMK/Encryption</td>
+                <td><strong>Storage 'mcapsb672a3e0a36fac8b' uses Microsoft-managed keys (MMK)</strong><br><span class="detail">Encryption key source is 'Microsoft.Storage'. Customer does not control key lifecycle, rotation, or revocation.</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Configure Customer-Managed Keys (CMK) with Managed HSM or Key Vault. CLZ v2 requires CMK for PRD workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="6" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>KeySource</th><th>Location</th><th>ResourceGroup</th><th>StorageAccount</th></tr></thead><tbody><tr><td>Microsoft.Storage</td><td>westus2</td><td>McapsGovernance</td><td>mcapsb672a3e0a36fac8b</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="7" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>CMK/Encryption</td>
+                <td><strong>Storage 'stcache86070d1e' uses Microsoft-managed keys (MMK)</strong><br><span class="detail">Encryption key source is 'Microsoft.Storage'. Customer does not control key lifecycle, rotation, or revocation.</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Configure Customer-Managed Keys (CMK) with Managed HSM or Key Vault. CLZ v2 requires CMK for PRD workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="7" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>KeySource</th><th>Location</th><th>ResourceGroup</th><th>StorageAccount</th></tr></thead><tbody><tr><td>Microsoft.Storage</td><td>westus2</td><td>rgasrvltsec86070d1e</td><td>stcache86070d1e</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="8" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>CMK/Encryption</td>
+                <td><strong>No Managed HSM deployed and no CMK in use</strong><br><span class="detail">4 storage account(s) rely entirely on Microsoft-managed keys. No customer key sovereignty.</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Deploy Managed HSM and configure CMK for all storage accounts containing sensitive/regulated data.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="8" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (4)</div>
+                        <table class='artifact-table'><thead><tr><th>KeySource</th><th>ResourceGroup</th><th>StorageAccount</th></tr></thead><tbody><tr><td>Microsoft.Storage</td><td>GWCARC-recoveryvault</td><td>o2fqo9gwcarcvaulasrcache</td></tr><tr><td>Microsoft.Storage</td><td>rg-asrvault-gwc</td><td>r7geaxasrgwcvaasrcache</td></tr><tr><td>Microsoft.Storage</td><td>McapsGovernance</td><td>mcapsb672a3e0a36fac8b</td></tr><tr><td>Microsoft.Storage</td><td>rgasrvltsec86070d1e</td><td>stcache86070d1e</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="9" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Key Vault</td>
+                <td><strong>Key Vault 'lab18206' uses access policies instead of RBAC</strong><br><span class="detail">Access policies are less auditable and harder to manage at scale</span></td>
+                <td class="remediation">Migrate to RBAC authorization model for consistent access governance.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="10" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Key Vault</td>
+                <td><strong>Key Vault 'lab1152a8469' uses access policies instead of RBAC</strong><br><span class="detail">Access policies are less auditable and harder to manage at scale</span></td>
+                <td class="remediation">Migrate to RBAC authorization model for consistent access governance.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="11" style="cursor: pointer;">
+                <td><span class="badge sev-critical">Critical</span></td>
+                <td>Network</td>
+                <td><strong>NSG 'NSG-Bastion-OnPrm-GWC' has dangerous inbound allow rules</strong><br><span class="detail">1 rule(s) allow inbound from Internet/Any to sensitive ports (22/3389/80/443/*) in RG 'gwc-rg-onprem-test-GWC'</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Restrict source addresses to known CIDRs. Use Azure Bastion for management access. Remove wildcard inbound rules.</td>
+                <td class="perspective">&#x1F3AD; Hacker</td>
+            </tr>            <tr class="artifact-row" data-row="11" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>Port</th><th>Priority</th><th>Rule</th><th>Source</th></tr></thead><tbody><tr><td>443</td><td>2703</td><td>AllowHttpsInBound</td><td>Internet</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="12" style="cursor: pointer;">
+                <td><span class="badge sev-critical">Critical</span></td>
+                <td>Network</td>
+                <td><strong>NSG 'vnet-wafermap-AzureBastionSubnet-nsg-westeurope' has dangerous inbound allow rules</strong><br><span class="detail">1 rule(s) allow inbound from Internet/Any to sensitive ports (22/3389/80/443/*) in RG 'wafermap-rg'</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Restrict source addresses to known CIDRs. Use Azure Bastion for management access. Remove wildcard inbound rules.</td>
+                <td class="perspective">&#x1F3AD; Hacker</td>
+            </tr>            <tr class="artifact-row" data-row="12" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>Port</th><th>Priority</th><th>Rule</th><th>Source</th></tr></thead><tbody><tr><td>443</td><td>2703</td><td>AllowHttpsInBound</td><td>Internet</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="13" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>Network</td>
+                <td><strong>Insufficient Private Endpoint coverage</strong><br><span class="detail">0 Private Endpoint(s) for 4 Private-Link-eligible resources (Storage, Key Vault, SQL)</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Enable Private Endpoints for all PaaS services. Disable public network access on storage accounts, Key Vaults, and SQL servers.</td>
+                <td class="perspective">&#x1F3AD; Hacker</td>
+            </tr>            <tr class="artifact-row" data-row="13" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (4)</div>
+                        <table class='artifact-table'><thead><tr><th>Name</th><th>ResourceGroup</th><th>Type</th></tr></thead><tbody><tr><td>o2fqo9gwcarcvaulasrcache</td><td>GWCARC-recoveryvault</td><td>Storage</td></tr><tr><td>r7geaxasrgwcvaasrcache</td><td>rg-asrvault-gwc</td><td>Storage</td></tr><tr><td>mcapsb672a3e0a36fac8b</td><td>McapsGovernance</td><td>Storage</td></tr><tr><td>stcache86070d1e</td><td>rgasrvltsec86070d1e</td><td>Storage</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="14" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>Network</td>
+                <td><strong>High number of public IP addresses (11)</strong><br><span class="detail">Large external attack surface. CLZ v2 recommends minimizing public endpoints.</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Consolidate behind Azure Firewall, Application Gateway, or Front Door. Use Private Link where possible.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="14" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (11)</div>
+                        <table class='artifact-table'><thead><tr><th>Attached</th><th>IP</th><th>Name</th><th>ResourceGroup</th></tr></thead><tbody><tr><td>Yes</td><td>50.85.62.201</td><td>VNET-Spoke1-WEU-ip</td><td>rg-spoke1-WEU</td></tr><tr><td>Yes</td><td>51.136.97.201</td><td>Gateway-Hub-WEU-pip</td><td>rg-thub-WEU</td></tr><tr><td>Yes</td><td>172.211.38.45</td><td>Gateway-OnPrem-WEU-pip</td><td>rg-tonprem-WEU</td></tr><tr><td>Yes</td><td>4.210.156.4</td><td>cvm-win-01-ip</td><td>wafermap-rg</td></tr><tr><td>Yes</td><td>20.107.127.42</td><td>vnet-wafermap-ip</td><td>wafermap-rg</td></tr><tr><td>Yes</td><td>4.185.4.86</td><td>Gateway-OnPrem-GWC-pip</td><td>gwc-rg-onprem-test-GWC</td></tr><tr><td>Yes</td><td>4.185.212.189</td><td>gwchyper-v-ip</td><td>gwc-rg-onprem-test-GWC</td></tr><tr><td>Yes</td><td>131.189.95.18</td><td>hyper-v-2-ip</td><td>gwc-rg-onprem-test-GWC</td></tr><tr><td>Yes</td><td>135.220.226.106</td><td>hyper-v-3-ip</td><td>gwc-rg-onprem-test-GWC</td></tr><tr><td>No</td><td>135.220.39.71</td><td>nat-piplocalnat</td><td>gwc-rg-onprem-test-GWC</td></tr><tr><td>Yes</td><td>4.184.128.38</td><td>testclient-ip</td><td>gwc-rg-onprem-test-GWC</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="15" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>Network</td>
+                <td><strong>Insufficient Private Endpoint coverage</strong><br><span class="detail">1 Private Endpoint(s) for 5 Private-Link-eligible resources (Storage, Key Vault, SQL)</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Enable Private Endpoints for all PaaS services. Disable public network access on storage accounts, Key Vaults, and SQL servers.</td>
+                <td class="perspective">&#x1F3AD; Hacker</td>
+            </tr>            <tr class="artifact-row" data-row="15" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (5)</div>
+                        <table class='artifact-table'><thead><tr><th>Name</th><th>ResourceGroup</th><th>Type</th></tr></thead><tbody><tr><td>alab17083</td><td>testlabrg</td><td>Storage</td></tr><tr><td>testsa123321</td><td>akstestapp1rg1</td><td>Storage</td></tr><tr><td>mcaps8f6401162010e3b6</td><td>McapsGovernance</td><td>Storage</td></tr><tr><td>lab18206</td><td>testlabrg</td><td>KeyVault</td></tr><tr><td>lab1152a8469</td><td>testlabrg</td><td>KeyVault</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="16" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet48'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="17" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet49'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="18" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet5'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="19" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet50'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="20" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet6'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="21" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet46'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="22" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet8'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="23" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet9'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="24" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet1'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="25" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet2'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="26" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'aks-vnet-17148367'</strong><br><span class="detail">3 subnet(s) lack forced-tunneling via UDR: aks-subnet, aks-appgateway, aks-virtualkubelet</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="27" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'Dtllab1'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: Dtllab1Subnet</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="28" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>VNets without DDoS Protection Plan</strong><br><span class="detail">55 VNet(s) lack DDoS Protection Plan</span></td>
+                <td class="remediation">Enable Azure DDoS Network Protection on production VNets with public-facing workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="29" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet47'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="30" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet7'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="31" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>No Azure Firewall detected</strong><br><span class="detail">CLZ v2 Walk/Run phases require centralized firewall for egress filtering</span></td>
+                <td class="remediation">Deploy Azure Firewall in the hub VNet for centralized egress control and threat intelligence filtering.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="32" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet45'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="33" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'VNET-OnPrem-GWC'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="34" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet-germanywestcentral-3'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: snet-germanywestcentral-1</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="35" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet-germanywestcentral-2'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: snet-germanywestcentral-1</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="36" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet-germanywestcentral-1'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: snet-germanywestcentral-1</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="37" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet-germanywestcentral'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: snet-germanywestcentral-1</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="38" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet2gr1'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="39" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet1rg1'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="40" style="cursor: pointer;">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Orphaned public IP addresses</strong><br><span class="detail">1 public IP(s) are not attached to any resource — potential cost waste and attack surface</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Delete unused public IPs. Each public IP is a potential entry point.</td>
+                <td class="perspective">&#x1F3AD; Hacker</td>
+            </tr>            <tr class="artifact-row" data-row="40" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>IP</th><th>Name</th><th>ResourceGroup</th><th>SKU</th></tr></thead><tbody><tr><td>135.220.39.71</td><td>nat-piplocalnat</td><td>gwc-rg-onprem-test-GWC</td><td>Standard</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="41" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet02'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="42" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet-wafermap'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="43" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet03'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="44" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'VNET-OnPrem-WEU'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="45" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'VNET-Spoke3-WEU'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="46" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'VNET-Spoke2-WEU'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="47" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'VNET-Spoke1-WEU'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="48" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>No Azure Firewall detected</strong><br><span class="detail">CLZ v2 Walk/Run phases require centralized firewall for egress filtering</span></td>
+                <td class="remediation">Deploy Azure Firewall in the hub VNet for centralized egress control and threat intelligence filtering.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="49" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet-westus2'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="50" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet44'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="51" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet43'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="52" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet42'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="53" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet23'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="54" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet22'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="55" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet21'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="56" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet20'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="57" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet2'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="58" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet19'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="59" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet18'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="60" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet24'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="61" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet17'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="62" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet15'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="63" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet14'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="64" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet13'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="65" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet12'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="66" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet11'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="67" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet10'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="68" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet1'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="69" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet16'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="70" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'vnet-germanywestcentral-4'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: snet-germanywestcentral-1</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="71" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet25'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="72" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet27'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="73" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet41'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="74" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet40'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="75" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet4'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="76" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet39'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="77" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet38'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="78" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet37'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="79" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet36'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="80" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet26'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="81" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet35'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="82" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet33'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="83" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet32'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="84" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet31'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="85" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet30'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="86" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet3'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="87" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet29'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="88" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet28'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="89" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>Subnets without UDR in VNet 'SpokeVNet34'</strong><br><span class="detail">1 subnet(s) lack forced-tunneling via UDR: default</span></td>
+                <td class="remediation">Attach UDRs to force egress through Azure Firewall. Required for CLZ v2 Walk phase.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="90" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Network</td>
+                <td><strong>VNets without DDoS Protection Plan</strong><br><span class="detail">22 VNet(s) lack DDoS Protection Plan</span></td>
+                <td class="remediation">Enable Azure DDoS Network Protection on production VNets with public-facing workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="91" style="">
+                <td><span class="badge sev-critical">Critical</span></td>
+                <td>Policy</td>
+                <td><strong>Azure Policy non-compliance detected</strong><br><span class="detail">19 non-compliant resource(s). Compliance gap indicates governance drift.</span></td>
+                <td class="remediation">Review non-compliant resources in Azure Policy. Remediate or create exemptions with justification.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="92" style="">
+                <td><span class="badge sev-critical">Critical</span></td>
+                <td>Policy</td>
+                <td><strong>Azure Policy non-compliance detected</strong><br><span class="detail">26 non-compliant resource(s). Compliance gap indicates governance drift.</span></td>
+                <td class="remediation">Review non-compliant resources in Azure Policy. Remediate or create exemptions with justification.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="93" style="cursor: pointer;">
+                <td><span class="badge sev-critical">Critical</span></td>
+                <td>RBAC</td>
+                <td><strong>Excessive privileged role assignments at subscription scope</strong><br><span class="detail">4 principals have Owner/Contributor/UAA at subscription level (threshold: 3)</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Reduce subscription-scoped privileged assignments. Use resource-group scoped roles and PIM for JIT access.</td>
+                <td class="perspective">&#x1F3AD; Hacker</td>
+            </tr>            <tr class="artifact-row" data-row="93" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (4)</div>
+                        <table class='artifact-table'><thead><tr><th>Principal</th><th>Role</th><th>Type</th></tr></thead><tbody><tr><td>d0bc0661-fedc-45cf-b490-84cad5174434</td><td>User Access Administrator</td><td>ServicePrincipal</td></tr><tr><td>d0bc0661-fedc-45cf-b490-84cad5174434</td><td>Contributor</td><td>ServicePrincipal</td></tr><tr><td>11f3dbc4-1e2e-4199-83d2-9cca35926c85</td><td>Contributor</td><td>ServicePrincipal</td></tr><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>Owner</td><td>User</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="94" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>RBAC</td>
+                <td><strong>Direct user role assignments found (not via groups)</strong><br><span class="detail">4 role assignments are directly to users instead of Entra ID groups</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Assign roles to Entra ID groups, not individual users. This ensures consistent access management and easier auditing.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="94" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (4)</div>
+                        <table class='artifact-table'><thead><tr><th>Principal</th><th>Role</th><th>Scope</th></tr></thead><tbody><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>Owner</td><td>/subscriptions/da18cc37-a8d6-4643-8f64-01162010e3b6</td></tr><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>SRE Agent Administrator</td><td>/subscriptions/da18cc37-a8d6-4643-8f64-01162010e3b6/resourcegroups/test-aks/providers/Microsoft.App/agents/sretest1</td></tr><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>Contributor</td><td>/subscriptions/da18cc37-a8d6-4643-8f64-01162010e3b6/resourcegroups/testlabrg/providers/microsoft.devtestlab/labs/lab1/users/152ac45e-e0f3-4c02-96bc-4fe700f205cd</td></tr><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>Reader</td><td>/subscriptions/da18cc37-a8d6-4643-8f64-01162010e3b6/resourceGroups/lab1-labvm2-895103</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="95" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>RBAC</td>
+                <td><strong>Service principals with Owner role</strong><br><span class="detail">6 service principal(s) have Owner role — potential lateral movement vector</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Replace Owner with scoped Contributor or custom roles. Service principals should never hold Owner.</td>
+                <td class="perspective">&#x1F3AD; Hacker</td>
+            </tr>            <tr class="artifact-row" data-row="95" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (6)</div>
+                        <table class='artifact-table'><thead><tr><th>Principal</th><th>PrincipalId</th><th>Scope</th></tr></thead><tbody><tr><td>-</td><td>0670e64a-4ff1-4d5d-8c77-784ca0dca8e1</td><td>/providers/Microsoft.Management/managementGroups/08cc2a62-5116-449e-bed1-98c29bd48de7</td></tr><tr><td>-</td><td>2380d844-09ed-4b24-9e84-435ea5a4dc9b</td><td>/providers/Microsoft.Management/managementGroups/08cc2a62-5116-449e-bed1-98c29bd48de7</td></tr><tr><td>-</td><td>faff4814-ad17-4e40-9826-7fcb2a578868</td><td>/providers/Microsoft.Management/managementGroups/08cc2a62-5116-449e-bed1-98c29bd48de7</td></tr><tr><td>-</td><td>b44cbfcb-0b02-41a7-9f50-4044a3b4884f</td><td>/providers/Microsoft.Management/managementGroups/08cc2a62-5116-449e-bed1-98c29bd48de7</td></tr><tr><td>57f0003a-3718-4a58-a384-aea59e49dbd8</td><td>50e48ddf-f997-431b-88b3-4fd05907499b</td><td>/providers/Microsoft.Management/managementGroups/08cc2a62-5116-449e-bed1-98c29bd48de7</td></tr><tr><td>eadea216-1d5c-4a4b-beaf-4f145e6b1cb4</td><td>0bc12465-ad34-4ee9-9d73-d6b23dfc78b8</td><td>/providers/Microsoft.Management/managementGroups/896a9463-4bb5-462e-b7b5-2e525d3e1a03</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="96" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>RBAC</td>
+                <td><strong>Direct user role assignments found (not via groups)</strong><br><span class="detail">1 role assignments are directly to users instead of Entra ID groups</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Assign roles to Entra ID groups, not individual users. This ensures consistent access management and easier auditing.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="96" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>Principal</th><th>Role</th><th>Scope</th></tr></thead><tbody><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>Owner</td><td>/subscriptions/6cbb5372-2516-4048-b672-a3e0a36fac8b</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="97" style="cursor: pointer;">
+                <td><span class="badge sev-high">High</span></td>
+                <td>RBAC</td>
+                <td><strong>Service principals with Owner role</strong><br><span class="detail">6 service principal(s) have Owner role — potential lateral movement vector</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Replace Owner with scoped Contributor or custom roles. Service principals should never hold Owner.</td>
+                <td class="perspective">&#x1F3AD; Hacker</td>
+            </tr>            <tr class="artifact-row" data-row="97" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (6)</div>
+                        <table class='artifact-table'><thead><tr><th>Principal</th><th>PrincipalId</th><th>Scope</th></tr></thead><tbody><tr><td>-</td><td>0670e64a-4ff1-4d5d-8c77-784ca0dca8e1</td><td>/providers/Microsoft.Management/managementGroups/08cc2a62-5116-449e-bed1-98c29bd48de7</td></tr><tr><td>-</td><td>2380d844-09ed-4b24-9e84-435ea5a4dc9b</td><td>/providers/Microsoft.Management/managementGroups/08cc2a62-5116-449e-bed1-98c29bd48de7</td></tr><tr><td>-</td><td>faff4814-ad17-4e40-9826-7fcb2a578868</td><td>/providers/Microsoft.Management/managementGroups/08cc2a62-5116-449e-bed1-98c29bd48de7</td></tr><tr><td>-</td><td>b44cbfcb-0b02-41a7-9f50-4044a3b4884f</td><td>/providers/Microsoft.Management/managementGroups/08cc2a62-5116-449e-bed1-98c29bd48de7</td></tr><tr><td>57f0003a-3718-4a58-a384-aea59e49dbd8</td><td>50e48ddf-f997-431b-88b3-4fd05907499b</td><td>/providers/Microsoft.Management/managementGroups/08cc2a62-5116-449e-bed1-98c29bd48de7</td></tr><tr><td>eadea216-1d5c-4a4b-beaf-4f145e6b1cb4</td><td>0bc12465-ad34-4ee9-9d73-d6b23dfc78b8</td><td>/providers/Microsoft.Management/managementGroups/896a9463-4bb5-462e-b7b5-2e525d3e1a03</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="98" style="cursor: pointer;">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>RBAC</td>
+                <td><strong>External guest users with role assignments</strong><br><span class="detail">4 guest (B2B) user(s) have direct Azure role assignments</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Review guest access. Ensure external identities are governed via access reviews and conditional access.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="98" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (4)</div>
+                        <table class='artifact-table'><thead><tr><th>Guest</th><th>Role</th><th>Scope</th></tr></thead><tbody><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>Owner</td><td>/subscriptions/da18cc37-a8d6-4643-8f64-01162010e3b6</td></tr><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>SRE Agent Administrator</td><td>/subscriptions/da18cc37-a8d6-4643-8f64-01162010e3b6/resourcegroups/test-aks/providers/Microsoft.App/agents/sretest1</td></tr><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>Contributor</td><td>/subscriptions/da18cc37-a8d6-4643-8f64-01162010e3b6/resourcegroups/testlabrg/providers/microsoft.devtestlab/labs/lab1/users/152ac45e-e0f3-4c02-96bc-4fe700f205cd</td></tr><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>Reader</td><td>/subscriptions/da18cc37-a8d6-4643-8f64-01162010e3b6/resourceGroups/lab1-labvm2-895103</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="99" style="cursor: pointer;">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>RBAC</td>
+                <td><strong>External guest users with role assignments</strong><br><span class="detail">1 guest (B2B) user(s) have direct Azure role assignments</span><span class="expand-hint">&#x25B6; Double-click to expand ($($f.Artifacts.Count) items)</span></td>
+                <td class="remediation">Review guest access. Ensure external identities are governed via access reviews and conditional access.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="artifact-row" data-row="99" style="display:none;">
+                <td colspan="5">
+                    <div class="artifact-container">
+                        <div class="artifact-header">&#x1F4CB; Associated Items (1)</div>
+                        <table class='artifact-table'><thead><tr><th>Guest</th><th>Role</th><th>Scope</th></tr></thead><tbody><tr><td>macancil_microsoft.com#EXT#@fdpo.onmicrosoft.com</td><td>Owner</td><td>/subscriptions/6cbb5372-2516-4048-b672-a3e0a36fac8b</td></tr></tbody></table>
+                    </div>
+                </td>
+            </tr>            <tr class="finding-row" data-row="100" style="">
+                <td><span class="badge sev-high">High</span></td>
+                <td>RBAC Cross-Env</td>
+                <td><strong>Excessive cross-environment identity sprawl (DTA ↔ PRD)</strong><br><span class="detail">19 identities have roles in BOTH DTA and PRD subscriptions. Blast radius spans environments.</span></td>
+                <td class="remediation">Implement environment-specific identities. DTA service principals should NOT have PRD access. Use separate Entra groups per environment.</td>
+                <td class="perspective">&#x1F3AD; Hacker</td>
+            </tr>            <tr class="finding-row" data-row="101" style="">
+                <td><span class="badge sev-high">High</span></td>
+                <td>RBAC Cross-Env</td>
+                <td><strong>Excessive cross-environment identity sprawl (DTA ↔ PRD)</strong><br><span class="detail">19 identities have roles in BOTH DTA and PRD subscriptions. Blast radius spans environments.</span></td>
+                <td class="remediation">Implement environment-specific identities. DTA service principals should NOT have PRD access. Use separate Entra groups per environment.</td>
+                <td class="perspective">&#x1F3AD; Hacker</td>
+            </tr>            <tr class="finding-row" data-row="102" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Storage</td>
+                <td><strong>Storage 'alab17083' lacks infrastructure double encryption</strong><br><span class="detail">CLZ v2 Run phase recommends infrastructure encryption for defense-in-depth</span></td>
+                <td class="remediation">Enable infrastructure encryption for sensitive data workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="103" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Storage</td>
+                <td><strong>Storage 'testsa123321' lacks infrastructure double encryption</strong><br><span class="detail">CLZ v2 Run phase recommends infrastructure encryption for defense-in-depth</span></td>
+                <td class="remediation">Enable infrastructure encryption for sensitive data workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="104" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Storage</td>
+                <td><strong>Storage 'mcaps8f6401162010e3b6' lacks infrastructure double encryption</strong><br><span class="detail">CLZ v2 Run phase recommends infrastructure encryption for defense-in-depth</span></td>
+                <td class="remediation">Enable infrastructure encryption for sensitive data workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="105" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Storage</td>
+                <td><strong>Storage 'o2fqo9gwcarcvaulasrcache' lacks infrastructure double encryption</strong><br><span class="detail">CLZ v2 Run phase recommends infrastructure encryption for defense-in-depth</span></td>
+                <td class="remediation">Enable infrastructure encryption for sensitive data workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="106" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Storage</td>
+                <td><strong>Storage 'r7geaxasrgwcvaasrcache' lacks infrastructure double encryption</strong><br><span class="detail">CLZ v2 Run phase recommends infrastructure encryption for defense-in-depth</span></td>
+                <td class="remediation">Enable infrastructure encryption for sensitive data workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="107" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Storage</td>
+                <td><strong>Storage 'mcapsb672a3e0a36fac8b' lacks infrastructure double encryption</strong><br><span class="detail">CLZ v2 Run phase recommends infrastructure encryption for defense-in-depth</span></td>
+                <td class="remediation">Enable infrastructure encryption for sensitive data workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr>            <tr class="finding-row" data-row="108" style="">
+                <td><span class="badge sev-medium">Medium</span></td>
+                <td>Storage</td>
+                <td><strong>Storage 'stcache86070d1e' lacks infrastructure double encryption</strong><br><span class="detail">CLZ v2 Run phase recommends infrastructure encryption for defense-in-depth</span></td>
+                <td class="remediation">Enable infrastructure encryption for sensitive data workloads.</td>
+                <td class="perspective">&#x1F3E2; CISO</td>
+            </tr></tbody>
+        </table>
+
+        <div class="footer">
+            CLZ v2 Security Maturity Scanner &nbsp;|&nbsp; github.com/mcancillo/aks-security-policies &nbsp;|&nbsp; 2026-06-26 07:15:34 UTC
+        </div>
+    </div>
+    <script>
+        document.querySelectorAll('.finding-row').forEach(row => {
+            row.addEventListener('dblclick', () => {
+                const rowId = row.dataset.row;
+                const artifactRow = document.querySelector('.artifact-row[data-row="' + rowId + '"]');
+                if (!artifactRow) return;
+
+                const isVisible = artifactRow.style.display !== 'none';
+                artifactRow.style.display = isVisible ? 'none' : 'table-row';
+                row.classList.toggle('expanded', !isVisible);
+
+                // Update hint text
+                const hint = row.querySelector('.expand-hint');
+                if (hint) {
+                    hint.innerHTML = isVisible
+                        ? hint.innerHTML.replace('&#x25BC;', '&#x25B6;').replace('▼', '▶')
+                        : hint.innerHTML.replace('&#x25B6;', '&#x25BC;').replace('▶', '▼');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
